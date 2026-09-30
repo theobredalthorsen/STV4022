@@ -1,0 +1,264 @@
+---
+title: "Seminaroppgave 4"
+author: "Theodor Bredal-Thorsen"
+format: 
+ html:
+  embed-resources: true
+  toc: true
+  number-sections: true
+  theme: minty
+editor: source
+execute:
+  message: false
+  warning: false
+  echo: true
+  eval: true
+---
+
+# Library
+```{r}
+library(tidyverse)
+library(rosdata)
+library(rstanarm)
+library(haven)
+library(modelsummary)
+library(tinytable)
+
+```
+
+```{r}
+rule_data <- read_dta("dodgingrules.dta")
+
+rule_data <- na.omit(rule_data)
+```
+
+# Oppgave 1
+
+```{r}
+
+table(rule_data$filisave)
+
+```
+
+Filisave er formulert i kommentarene til datasettet som *"Did senator sign letter?"*, og kan derfor ha verdi som $0$ eller $1$. $0$ for ingen signatur (antakelig) og $1$ for signert per enhet i datasettet, senator. Det er observert 39 tilfeller av senatorer som ikke signerte forslaget, altså med verdi $0$ og $61$ med tilfeller av signatur.
+
+Gitt den binære utfallsvariabelen, vil et godt utgangspunkt for estimeringen av utfallet være en logistisk regresjon. Dette fordi vi ikke lenger kan undersøke en uavhengig *"effekt"* på et utfall, heller om utfallet finner sted eller ikke, dikotomisk. En logistisk regresjon modeller istedenfor sannsynligheten til ett utfall, gitt en verdi på uavhengig variabel, istedenfor en sammenlikning av verdi på uavhengig variabel og "tilhørende" verdi på avhengig. 
+
+```{r}
+table(filisave = rule_data$filisave, running18 = rule_data$running18)
+
+```
+Av senatorer som stilte til gjenvalg, var det 39 som **ikke** stemte for vedtaket, mens 22 stemte for. Dette er uansett høyere enn de som ikke stiller til gjenvalg, hvor kun 8 av utgående senatorer stemte for. Senatorer som stiller til gjenvalg, kan nok anses som *mer* tilbøyelige til å stemme for et slikt vedtak
+
+# Oppgave 2
+
+```{r}
+formel1 <- formula(filisave ~
+                gop + running18 +
+                wings +
+                leader +
+                stdrank +
+                servedmin)
+
+formel2 <- formula(filisave ~
+                gop + running18 +
+                wings +
+                leader +
+                stdrank +
+                servedmin+
+          gop:running18)
+
+```
+
+
+```{r}
+mod1 <- stan_glm(data = rule_data, formel1, family = binomial(link = "logit"), refresh = 0)
+
+mod1
+```
+```{r}
+mod2 <- stan_glm(data = rule_data, formel2, family = binomial(link = "logit"), refresh = 0, seed = 501)
+
+mod2
+```
+```{r}
+modelsummary(list(mod1, mod2))
+```
+Koeffisienten til variabelen $running18$ kan ikke forstås som i en vanlig lineær regresjonsmodell, men heller utfra $\beta$ og $X_1 = running18 = (0,1)$ posisjon i logit-funksjonen.
+Variabelen $running18$ er en binær variabel, og koeffisienten til en slik binær variabel kan forstås utfra odds-ratioer.
+
+```{r}
+exp(coefficients(mod1))
+```
+
+I modell 1 er koeffisienten $≈0.7$, en eksponeringen av denne koeffisienten: $(0.7)^2 ≈ 2$ viser til den relative endringen i sannsynlighet ved en én enhets økning i uavhengig variabel. Gitt variabelen som binær, kan en konkludere med at modellen estimerer en dobbel så stor sjanse til å stemme for vedtaket hos senatorer som stiller til gjenvalg konra dem som utgår av senatet. 
+Hvor stor denne sannsynligheten er nominelt er vanskelig å fastslå, men man kan komme nærme gitt *"the divide by 4 rule"*, hvor punktestimatet, hvis tilnærmet likt det bratteste punktet på kurven (der den dobbelderiverte er lik 0), delt på 4 fungerer som et mål på maksimal økning i sannsynligheten for utfallet ved en enhetsendring i prediktor. Her er $\frac{\beta}{4} ≈ 0.175$ og peker til at vi kan anta at sannsynligheten (på skalaen 0 til 1) øker med 17 prosentpoeng. 
+
+**Det samme med modell 2**
+
+```{r}
+exp(coefficients(mod2))
+```
+
+Oddsen i modell 2, som inneholder et samspilledd mellom senatoren sin partitilhørighet og om de stiller til gjenvalg eller ikke, er ${\beta ≈ 1.44}^{2} ≈ 4.2$, som tilsier at en senator som stiller til gjenvalg har en 4 ganger så stor sannsynlighet for å stemme for mottaket kontra en som ikke stiller til gjenvalg. 
+
+$\frac{\beta}{4} ≈0.36$ gir oss en økning på 0.36 på sannsynlighetsskalaen ved en økning i den binære gjenvalgsvariabelen. 
+
+Ved å inkludere et samspilledd i modell 2, vil undersøkelsen av $running18$ koeffisient være med antagelsen om at $gop = 0$, og senatoren derfor er demokratisk. Modellen gir slik grunnlag for å konkludere med at senatorer som ikke er fra det republikanske partiet, og som stiller til gjenvalg, har en høyere sjanse for å stemme for vedtaket. Effekten av gjenvalg for en republikansk kandidat er gitt ved koeffisienten for gjenvalg summert med koeffisienten for samspilleddet for en republikaner som stiller til gjenvalg $\beta_1 - \beta_3 ≈ -1.09$. En demokrat som stiller til gjenvalg er trolig mer positiv til vedtaket enn en republikaner som stiller. 
+
+# Oppgave 4
+
+
+
+```{r}
+#| output: false
+
+table(rule_data$leader) # Sjekker vanligste verdier for kategoriske variabler
+# 0 er vanligst
+
+table(rule_data$servedmin)
+# 1 er vanligst
+
+```
+
+
+```{r}
+gop_running_scenario <- tibble(
+  gop = 1,
+  running18 = 1,
+  wings = median(rule_data$wings),
+  leader = 0,
+  stdrank = median(rule_data$stdrank),
+  servedmin = 1
+)
+
+predict_mod2 <- predict(mod2, gop_running_scenario, type = "response", seed = 501)
+
+mean(predict_mod2)
+
+```
+Sannsynligheten for at en senator i scenarioet gitt av oppgaveteksten stemte for vedtaket, er 63%. 
+
+
+# Oppgave 5
+```{r}
+wings_seq <- seq(
+                from = min(na.omit(rule_data$wings)),
+                to = max(na.omit(rule_data$wings)),
+                length.out = 20)
+
+wings_scenario <- tibble(
+  gop = 1,
+  running18 = 0,
+  wings = wings_seq,
+  leader = 0,
+  stdrank = median(rule_data$stdrank),
+  servedmin = 1
+)
+
+mod1_preds <- posterior_epred(mod1, newdata = wings_scenario, draws = 4000, seed = 501)
+
+mod1_preds_summary <- apply(mod1_preds, 
+                            2, 
+                            FUN = quantile,
+                            probs = c(0.025,0.5,0.975))
+
+mod1_preds_summary <- mod1_preds_summary
+
+mod1_preds_summary <- as.data.frame(t(mod1_preds_summary))
+
+mod1_preds_summary$wings <- wings_seq 
+```
+
+
+```{r}
+mod1_preds_plot <- ggplot(mod1_preds_summary, aes(y = `50%`,
+                                                  ymin = `2.5%`,
+                                                  ymax = `97.5%`,
+                                                  x = wings_seq)) +
+  geom_ribbon(alpha = 0.1, fill = "firebrick") +
+  geom_line() +
+  theme_minimal() +
+  labs(
+    title = "Prediksjoner gitt forskjellige verdier på Wings med sentraltendens i andre prediktorer",
+    x = "Wings",
+    y = "Sannsynlighet for å stemme for vedtaket"
+  )
+
+mod1_preds_plot
+```
+
+Plottet forteller oss at jo mer radikal en senator er, altså ideologisk avstand fra gjennomsnittet, jo mindre sannsynlig er det at de stemte for vedtaket. Merk at: $gop = 1$ i scenarioet, som endrer på intuisjonen fra de forrige oppgaver. Det er ikke republikanerne generelt som er negative til vedtaket, det er de radikale (republikanerne) folkevalgte er negative til vedtak som skaper hindringer i det lovgivende systemet!
+
+
+# Ekstraoppgave
+
+```{r}
+wings_median <- median(rule_data$wings)
+
+scenario <- tibble(
+  gop = c(0,0,1,1),
+  running18 = c(0,1,0,1),
+  wings = wings_median,
+  leader = 0,
+  stdrank = median(rule_data$stdrank),
+  servedmin = 1
+)
+
+mod2_preds <- posterior_epred(mod2, newdata = scenario, draws = 4000, seed = 501)
+
+mod2_preds_summary <-  apply(mod2_preds, 
+                            2, 
+                            FUN = quantile,
+                            probs = c(0.025,0.5,0.975))
+
+
+mod2_preds_summary <- as.data.frame(t(mod2_preds_summary))
+mod2_preds_summary$gop <- c(0,0,1,1)
+mod2_preds_summary$running18 <- c(0,1,0,1)
+
+
+
+mod2_dem <- mod2_preds_summary |> 
+  filter(gop == 0)
+
+
+mod2_gop <- mod2_preds_summary |> 
+  filter(gop == 1)
+
+mod2_dem_plot <- ggplot(mod2_dem, aes(y = `50%`,
+                                                  ymin = `2.5%`,
+                                                  ymax = `97.5%`,
+                                                  x = as.factor(running18))) +
+  geom_point()+
+  geom_errorbar(width = 0.1) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+    labs(
+    title = "Demokratiske senatorer og gjenvalg",
+    x = "Gjenvalg, 1 = ja, 0 = nei",
+    y = "Sannsynlighet for å stemme for vedtaket"
+  )
+
+mod2_dem_plot
+```
+
+
+```{r}
+mod2_gop_plot <- ggplot(mod2_gop, aes(y = `50%`,
+                                                  ymin = `2.5%`,
+                                                  ymax = `97.5%`,
+                                                  x = as.factor(running18))) +
+  geom_point()+
+  geom_errorbar(width = 0.1) +
+  scale_y_continuous(limits = c(0, 1)) +
+  theme_minimal() +
+  labs(
+    title = "Republikanske senatorer og gjenvalg",
+    x = "Gjenvalg, 1 = ja, 0 = nei",
+    y = "Sannsynlighet for å stemme for vedtaket"
+  )
+
+mod2_gop_plot
+```
+

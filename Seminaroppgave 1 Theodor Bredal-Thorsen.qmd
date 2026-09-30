@@ -1,0 +1,105 @@
+---
+title: "Seminaroppgave 1"
+author: "Theodor Bredal-Thorsen"
+format: 
+ html:
+  embed-resources: true
+  toc: true
+  number-sections: true
+  theme: minty
+editor: source
+execute:
+  message: false
+  warning: false
+  echo: true
+  eval: true
+---
+
+
+# Library
+
+```{r}
+library(tidyverse)
+library(rosdata)
+library(rstanarm)
+library(conflicted)
+library(ggplot2)
+library(tinytable)
+conflicts_prefer(dplyr::filter, 
+                 dplyr::select,
+                 quanteda::stopwords,
+                 rosdata::data)
+```
+
+# Oppgave 1
+```{r}
+
+dataset <- earnings # Laster dataset fra pakken "rosdata"
+
+tt(dataset |> slice_head(n = 5)) # Viser 5 første linjer i datasettet, pen fremstilling med pakken "tinytable"
+
+```
+
+
+```{r}
+
+cowsay::say(stringr::str_c("Datasettet har ",count(dataset)," observasjoner i ",length(dataset), " variabler"), by = "cow") # Hva sier kua?
+
+```
+Datasettet består av 1816 observasjoner på 15 variabler. Variablene består i egenskaper ved respondentene (slik som alder, personlige emosjonelle trekk og høyde) samt inntekt og utdanningsnivå hos dem selv og hos familie. 
+
+# Oppgave 2
+```{r}
+
+density <- ggplot(dataset, aes(x = earn)) + # X-akse gitt av variabelen earn i datasettet: dataset
+  geom_density(fill = "firebrick", alpha = 0.1) + # Tetthetsplot, med farge
+  theme_minimal() # Pen bakgrunn <3
+
+density
+
+```
+Fordelingen av variabelen inntekt er ikke særlig normalfordelt, det kan være hensiktsmessig å kode om variabelen for å skape et bedre grunnlag for analyse. Fordelingen av inntekt her er sterkt høyreforskjøvet, hvor det å benytte seg av logaritmen til variabelen inntekt vil kunne gi et bedre bilde på fordelingen av inntekt i utvalget. 
+
+
+
+```{r}
+density2 <- ggplot(dataset, aes(x = log(earn))) + # Samme som sist, men med logaritmen av X
+  geom_density(fill = "firebrick", alpha = 0.1) +
+  theme_minimal()
+
+density2
+
+
+```
+# Oppgave 3
+```{r}
+dataset <- dataset |> # Dataset pipet inn i...
+  mutate(gender = ifelse(male == 1, "male", "female")) # Ifelse argument for å kode om kjønnsvariabel
+
+dataset$gender <- as.factor(dataset$gender) # Definere som faktor
+
+class(dataset$gender) # Sjekk
+
+
+```
+
+
+```{r}
+gender_density <- ggplot(dataset, aes(x = log(earn), color = gender)) +
+  geom_density(fill = "firebrick", alpha = 0.1) +
+  geom_vline(
+    data = dataset |>
+      group_by(gender) |>
+      summarise(median = median(earn)),
+    aes(xintercept = log(median), color = gender),
+    linetype = "dashed", linewidth = 0.5
+  ) +
+  theme_minimal()
+
+gender_density
+```
+
+Plottet viser at den interne fordelingen av inntekt gitt av kjønn er relativt lik, men at inntekten blant kvinner er mer venstreforskjøvet, og med et lavere modus og median enn inntekten for menn. Slik kan vi forvente en lik endring i fordeling, relativt til medianen vi beveger oss vekk ifra, men hvor fordelingen av kvinner per punkt over medianen vil være lavere enn de for menn, og høyere under. 
+
+
+

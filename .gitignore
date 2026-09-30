@@ -1,0 +1,11 @@
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# macOS
+.DS_Store
+
+# Too large for GitHub (>100 MB)
+aksjeeiebok_2024.csv

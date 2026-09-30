@@ -1,0 +1,136 @@
+---
+title: "Seminaroppgave 2"
+author: "Theodor Bredal-Thorsen"
+format: 
+ html:
+  embed-resources: true
+  toc: true
+  number-sections: true
+  theme: minty
+editor: source
+execute:
+  message: false
+  warning: false
+  echo: true
+  eval: true
+---
+# Seminar 2
+
+# Library
+
+```{r}
+library(tidyverse)
+library(rosdata)
+library(rstanarm)
+library(conflicted)
+library(ggplot2)
+library(tinytable)
+library(broom)
+library(broom.mixed)
+library(knitr)
+library(modelsummary)
+conflicts_prefer(dplyr::filter, 
+                 dplyr::select,
+                 quanteda::stopwords,
+                 rosdata::data)
+```
+
+# Oppgave 1
+
+```{r}
+
+dem_data <- read.csv("lijphart.csv")
+
+scatter1 <- ggplot(dem_data, aes(y = eff_num_parl_parties_1981_2010, x = index_of_disproportionality_1981_2010,)) +
+  geom_point() + 
+  labs(
+    title = "Disproposjonalitet gitt av effektivt antall partier",
+    y = "Effektivt antall partier",
+    x= "Disproposjonalitet index"
+  )+
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+
+scatter1
+```
+Plottet viser hvordan effektivt antall partier varierer over en index for disproporsjonalitet mellom andel stemmer og andel seter i demokratiske systemer. En kan kanskje se et mønster her, hvor disproporsjonale systemer har færre effektive partier enn proporsjonale systemer. Cut-offet ved 2 partier, hvor disproporsjonaliteten øker plutselig peker mot at systemer som favoriserer få partier, slik som i systemer med majoritære valgsystemer, er de som fanges opp av indeksen. (Se flott plot hos seminarleder!!)
+
+# Oppgave 2
+
+```{r}
+
+mod1 <-stan_glm(data = dem_data, eff_num_parl_parties_1981_2010 ~ 1, refresh = 0)
+
+mod1_table <- tidy(mod1)
+
+tt(mod1_table)
+
+```
+
+
+```{r}
+
+mod2 <- stan_glm(data = dem_data, eff_num_parl_parties_1981_2010 ~ index_of_disproportionality_1981_2010, refresh = 0)
+
+mod2_table <- tidy(mod2, conf.int = TRUE)
+
+tt(mod2_table)
+
+```
+
+# Oppgave 3 
+```{r}
+res_plot <- plot(fitted(mod2), residuals(mod2)) |> abline(h=0, col="firebrick")
+
+
+```
+Hvis en kan se et mønster i residualene til regresjonsmodellen, er det et tegn på en effekt som har forblitt uforklart. For meg ser dette ganske så tilfeldig ut, og en kan slik trekke opp om at modellen oppfyller kravene til linearitet og homodeskasitet. 
+
+# Oppgave 4
+```{r}
+
+mod1_2_sum <- modelsummary(list(mod1, mod2),
+                           output="html",
+                           stars = TRUE, 
+                           fmt = 2,
+                           metrics = c("R2", "mad"),
+                           statistic = "conf.int",
+                           coef_rename = c("(Intercept)" = "Konstantledd",
+                                            "index_of_disproportionality_1981_2010" = "Disproporsjonalitetsindex 1981-2010"))
+
+mod1_2_sum
+
+
+```
+### Modell 1
+Når vi estimererer en variabel utfra et konstantledd, vil estimatet være et estimat av gjennomsnittet til  variabelen. Konstantledd lik 3.36 kan slik forstås som et gjennomsnitt der standardfeilen utgjør usikkerheten i estimatet. Vi kan være 95% sikre på at gjennomsnittet for variabelen er et sted mellom 2.91 og 3.79.
+
+### Modell 2
+Her må konstantleddet forstås annerledes, konstantleddet er nå verdien på Y, altså effektivt antall partier, når alle andre variabler er lik 0. "Effekten" av disproporsjonalitet er svakt negativ, og viser til at en økning i disproporsjonalitet skjer sammen med en nedgang i antall effektive partier. Med konfidensintervall er effekten farlig nærme 0, og man skal kanskje være varsom med å forkaste en nullhypotese, selv om effekten er statistisk signifikant. R2 gir uttrykk for at ca. 35% av variansen er forklart.
+
+
+# Oppgave 5
+```{r}
+mean_eff_parties <- mean(dem_data$eff_num_parl_parties_1981_2010)
+sd_eff_parties <- sd(dem_data$eff_num_parl_parties_1981_2010)
+n_eff_parties <- nrow(dem_data)
+
+
+
+s_error_eff_parties <- sd_eff_parties/sqrt(n_eff_parties)
+
+```
+
+Gjennomsnittet til variabelen er `r mean_eff_parties`, standardavviket er `r sd_eff_parties`, antall observasjoner er `r n_eff_parties `, gjennom å ta standardfeilen over kvadratroten til antall observasjoner får vi standardfeilen til estimatet av variabelen: `r  s_error_eff_parties`
+
+
+```{r}
+kvantil <- qt(.975, df = n_eff_parties - 1)
+
+top_grense <- (s_error_eff_parties*kvantil)+mean_eff_parties
+bunn_grense <- mean_eff_parties-(s_error_eff_parties*kvantil)
+
+```
+Konfidensintervallet er mellom `r bunn_grense` og `r top_grense` noe som er identisk med modellens konfidensintervall. 
+
+Gjennomsnittet til variabelen er tilnærmet lik gjennomsnittet til variabelen, dette stemmer med antagelsen om at estimeringen av et variabel utfra konstantledd finner gjennomsnittet. 

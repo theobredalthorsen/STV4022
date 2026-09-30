@@ -1,0 +1,399 @@
+---
+title: "Seminaroppgave 3"
+author: "Theodor Bredal-Thorsen"
+format: 
+ html:
+  embed-resources: true
+  toc: true
+  number-sections: true
+  theme: minty
+editor: source
+execute:
+  message: false
+  warning: false
+  echo: true
+  eval: true
+---
+
+```{r}
+library(tidyverse)
+library(rosdata)
+library(rstanarm)
+library(conflicted)
+library(ggplot2)
+library(tinytable)
+library(broom)
+library(broom.mixed)
+library(knitr)
+library(modelsummary)
+conflicts_prefer(dplyr::filter, 
+                 dplyr::select,
+                 quanteda::stopwords,
+                 rosdata::data)
+```
+
+```{r}
+dem_data <- read.csv("lijphart.csv")
+
+
+```
+
+# Oppgave 1
+```{r}
+scatter <- ggplot(data = dem_data, aes(x= pop_in_thousands_2009,y = federal_unitry_1981_2010)) +
+  geom_point()+
+  theme_minimal() +
+  labs(
+    title = "Federal unitry over population in thousands",
+    x = "Population in thousands",
+    y = "Federal unitry"
+  )
+
+scatter
+```
+Sterk høyreforskyvning her! Mange land med små populasjoner, men spredningen på føderalismevariabelen ser ut til å passe til et lineært forhold. 
+```{r}
+
+histo <- ggplot(data = dem_data, aes(x = pop_in_thousands_2009)) + 
+  geom_histogram( fill = "firebrick", alpha = 0.5) + 
+  theme_minimal()
+
+histo
+
+```
+Bekrefter høyreforskyvningen i populasjonsvariabelen!
+
+```{r}
+histo_log <- ggplot(data = dem_data, aes(x = log(pop_in_thousands_2009))) +
+  geom_histogram(binwidth = 0.5,
+                 fill = "firebrick",
+                 alpha = 0.5) +
+  theme_minimal()
+
+histo_log
+
+```
+Dette ser mer normalfordelt ut, den transformerte variabelen vil passe bedre til å modellere forholdet mellom befolkning og grad av føderalisme. 
+
+```{r}
+scatter_log <- ggplot(data=dem_data, aes(x=log(pop_in_thousands_2009), y = federal_unitry_1981_2010)) +
+  geom_point() +
+  theme_minimal() +
+   labs(
+    title = "Federal unitry over population in thousands",
+    x = "Log of Population in thousands",
+    y = "Federal unitry"
+  )
+
+scatter_log
+```
+Variasjonen til føderasjon over den logaritmisk transformerte populasjonsvariabelen ser ut til å ha et mer lineært forhold. 
+
+# Oppgave 2
+```{r}
+mod1 <- stan_glm(data = dem_data, federal_unitry_1981_2010 ~ log(pop_in_thousands_2009), refresh = 0)
+
+modelsummary(mod1, output = "html")
+```
+```{r}
+mod2 <- stan_glm(data = dem_data, federal_unitry_1981_2010 ~ plural_society_code, refresh = 0)
+
+modelsummary(mod2, output = "html")
+
+```
+
+```{r}
+mod3 <- stan_glm(data = dem_data, 
+                 federal_unitry_1981_2010 ~ log(pop_in_thousands_2009) + plural_society_code, 
+                 refresh= 0)
+modelsummary(mod3, output = "html")
+
+```
+
+```{r}
+mod4 <- stan_glm(data = dem_data, 
+                 federal_unitry_1981_2010 ~ log(pop_in_thousands_2009) * plural_society_code, 
+                 refresh= 0)
+
+modelsummary(mod4, output = "html")
+```
+# Oppgave 3
+```{r}
+modelsummary(list(mod1, mod2, mod3, mod4),
+             output = "html",
+             fmt = 2,
+             statistic = "conf.int",
+              coef_rename = c(
+                "(Intercept)" = "Konstantledd",
+                "log(pop_in_thousands_2009)" = "log(Populasjon)",
+                "plural_society_code" = "Grad av pluralisme"
+              ))
+
+```
+Basert på LOOIC, hvor verdien viser til hvor godt en modell predikerer en utelatt observasjon, vil jeg foretrekke modell 1. 
+Modell 3 og 4 derimot har en veldig lik LOOIC, og en høyere $R^2$, dog en lavere $R^2_{adj}$, noe som kanskje viser til at ved å kontrollere for pluralisme og kanskje også samspilleddet mellom populasjon og pluralisme forklarer mer av variansen i dataen. Dette illustrerer igjen hvorfor $R^2$ kanskje ikke alltid er det lureste å fokusere på, da ingen av koeffisientene i disse modellene er signifikante og inneholder 0 i konfidensintervallet. Dette viser til at ingen av effektene unntatt den transformerte populasjonsvariabelen, kan sees uten sin tilhørende nullhypotese. 
+
+Modell 1s parametere kan forstås som:
+Konstantleddet er verdien på avhengig variabel, federal unitry, når forklaringsvariabelen, log(populasjon), er lik 0. Dette vil si at et land med populasjonen 1 (noe kanskje litt urealistisk), vil vi forvente at, gitt modellen, scorer $-2.51$ på Lijpharts indeks. Parameteren $Beta$, eller koeffisienten til uavhengig variabel, tolker vi som endringen i avhengig variabel gitt en endring i uavhengig variabel. Her med størrelsen $0.28$, vil vi av en endring i $log(Populasjon)$ med $1$ forvente en endring $0.28$ ganger så stor i avhengig variabel, federal unitry. 
+
+```{r}
+mod1
+```
+$Sigma$ og MAD_SD viser til henholdsvis standardavviket til residualene og en verdi tilnærmet lik standardfeilen til estimatet. Her er $Estimat -+ MAD_{SD} \space * \space t-verdi (≈ 1.96) > 0$ Noe som bidrar til å anse estimatet som statistisk signifikant. 
+
+# Oppgave 4
+```{r}
+
+mod1_predict <- posterior_predict(mod1, draws = 100)
+
+library(bayesplot)
+ppc_dens_overlay(y = dem_data$federal_unitry_1981_2010, yrep = mod1_predict)
+
+
+```
+Jeg vil si at vår modell passer godt til de predikerte datene. Hovedinnvendingen er kanskje at de predikerte dataene ikke fanger opp de to modusene i de observerte dataene, men ellers er likheten god og jeg aner ingen systematisk feil i den observerte fordelingen. 
+
+# Oppgave 5
+```{r}
+dem_data_1_b <- data.frame(pop_in_thousands_2009 = 1e6)
+
+bil_predict <- posterior_predict(mod1, newdata = dem_data_1_b)
+
+p_bil_predict <- mean(bil_predict[,1] > 1)
+
+
+```
+Sannsynligheten for at et land med 1 milliard innbyggere scorer over 1 på føderasjonsskalaen til Lijphart er `r p_bil_predict`. Dette viser til at store land, mest sannsynlig er føderasjoner; noe som stemmer overens med i alle fall min intuisjon. 
+
+# Ekstra oppgaver
+
+## Oppgave 6
+
+```{r}
+scatter_country <- ggplot(data = dem_data, aes(x = log(pop_in_thousands_2009), y = federal_unitry_1981_2010, label = country)) + 
+  geom_text() +
+  geom_smooth(method = "lm", formula = y ~ x, stat = "smooth", col = "firebrick", alpha = 0) +
+    theme_minimal() + 
+  labs(
+    title = "Populasjon og føderalisme",
+    x = "Log(Populasjon)",
+    y = "Føderalisme Index"
+  )
+
+
+scatter_country
+```
+## Oppgave 7
+### Med egne prediksjoner, manuelt
+
+```{r}
+x_seq <- data.frame(pop_in_thousands_2009 = seq(
+  from = min(dem_data$pop_in_thousands_2009),
+  to   = max(dem_data$pop_in_thousands_2009),
+  length.out = 1000
+))
+
+
+y_pred <- posterior_predict(mod1, newdata = x_seq)
+
+pred_log <- tibble(
+  x_seq = log(x_seq$pop_in_thousands_2009),
+  y_pred = colMeans(y_pred)
+)
+
+pred_exp <- pred_log |> 
+  mutate(x = exp(x_seq),
+         y = y_pred)
+
+exp_scatter <- ggplot(data = dem_data, aes(x = pop_in_thousands_2009, y = federal_unitry_1981_2010)) +
+  geom_point() +
+  geom_line(data = pred_exp, aes(x = x, y = y), stat = "identity", color = "firebrick") +
+  theme_minimal() +
+  labs(
+    title = "Regresjonslinje på original skala",
+    x = "Populasjon i tusen",
+    y = "Føderasjonsindeks"
+  )
+
+exp_scatter
+
+```
+
+### Med geom_smooth
+```{r}
+exp_scatter_smooth <- ggplot(data = dem_data, 
+                             aes(x = pop_in_thousands_2009,
+                                 y = federal_unitry_1981_2010)) +
+  geom_point() +
+  geom_smooth(formula = y ~ log(x)) +
+  theme_minimal() +
+  labs(
+    title = "Regresjonslinje på original skala",
+    x = "Populasjon i tusen",
+    y = "Føderasjonsindeks"
+  )
+
+exp_scatter_smooth
+
+```
+## Oppgave 8
+
+```{r}
+boot_mean <- function(x) {
+  n <- nrow(x)
+  boot <- sample(1:n, replace = TRUE)
+  fed_boot <- dem_data$federal_unitry_1981_2010[boot]
+  mean_boot <- mean(fed_boot)
+  return(mean_boot)
+}
+
+n_sims <- 1000
+output_boot_mean <- replicate(n_sims, boot_mean(dem_data))
+
+hist(output_boot_mean)
+
+sd(output_boot_mean)
+sd(dem_data$federal_unitry_1981_2010)/sqrt(length(dem_data$federal_unitry_1981_2010))
+
+```
+
+Standardavviket til fordelingen av gjennomsnittet (0.158)  er tilsvarende til standardfeilen til den originale variabelen (0.166). Dette fordi, at ved å bootstrappe så estimerer vi en fordeling av gjennomsnittene, noe som fanges opp i standardfeilen til variabelen, ikke i standardavviket. 
+
+```{r}
+t_value <- qt(0.975, length(dem_data$federal_unitry_1981_2010-1))
+
+conf_top <- mean(output_boot_mean) + (sd(output_boot_mean)*t_value)
+conf_bottom <- mean(output_boot_mean) - (sd(output_boot_mean)*t_value)
+```
+
+Konfidensintervallet til den bootstrappede fordelingen er gitt mellom `r conf_top` og `r conf_bottom`
+
+## Oppgave 9
+
+```{r}
+median(dem_data$federal_unitry_1981_2010)
+
+
+boot_median <- function(x) {
+  n <- nrow(x)
+  boot <- sample(1:n, replace = TRUE)
+  fed_boot <- dem_data$federal_unitry_1981_2010[boot]
+  median_boot <- median(fed_boot)
+  return(median_boot)
+}
+
+output_boot_median <- replicate(n_sims, boot_median(dem_data))
+
+all.equal(mean(output_boot_median), median(dem_data$federal_unitry_1981_2010))
+
+sd(output_boot_median)
+```
+
+```{r}
+hist(output_boot_median, binwidth = 0.1)
+```
+## Oppgave 10
+
+```{r}
+rnd_values <- runif(2, min = -10, max = 10)
+mean(rnd_values)
+```
+
+```{r}
+n_sims_rnd <- 10000
+rng <- function(){
+  n <- 2
+  min <- -10
+  max <- 10
+  rnd_func <- runif(n,min,max)
+  return(mean(rnd_func))
+}
+
+rng_frame <- data.frame(replicate(n_sims_rnd, rng()))
+
+hist(rng_frame$replicate.n_sims_rnd..rng...)
+
+```
+```{r}
+n_var <- c(2, 3, 4, 5, 6, 7, 8, 9, 10)
+
+rng_var <- function(n){
+  min <- -10
+  max <- 10
+  rnd_func <- runif(n,min,max)
+  return(mean(rnd_func))
+}
+
+rng_frame2 <- sapply(n_var, function(n) replicate(n_sims, rng_var(n))) |> 
+  as.data.frame()
+
+rng_frame2_long <- rng_frame2 |> 
+  pivot_longer(cols = everything(), 
+               names_to = "n",
+               values_to = "mean") |> 
+  mutate(n = str_remove(n, "V"))
+
+
+plot_rng_facet <- ggplot(data = rng_frame2_long, aes(x=mean)) +
+  geom_histogram() + 
+  facet_wrap(~n) +
+  theme_minimal()
+  
+plot_rng_facet
+
+```
+```{r}
+se_func <- function(x){
+  var <- x 
+  f <- sd(var)
+  se <- f / (sqrt(length(var)))
+  return(se)
+}
+
+norm_se <- function() {
+norm <- rnorm(5, mean = 0, sd = 1)
+se_norm <- se_func(norm)
+
+return(se_norm)
+}
+
+  
+n_sims <- 10000
+set.seed(501)
+se_estimates <- replicate(n_sims, norm_se())
+
+mean(se_estimates)
+
+
+se_estimates_plot <- as.data.frame(se_estimates)
+
+
+
+ggplot(data = se_estimates_plot, aes(x = se_estimates)) +
+  geom_histogram(bins = 100) +
+  geom_vline(aes(xintercept = mean(se_estimates)))
+
+
+bias1 <- (1/sqrt(5))/mean(se_estimates)
+
+bias1
+```
+
+```{r}
+
+norm_se_thou <- function() {
+norm <- rnorm(1000, mean = 0, sd = 1)
+se_norm <- se_func(norm)
+
+return(se_norm)
+}
+
+se_est_thou <- replicate(n_sims,norm_se_thou())
+mean(se_est_thou)
+
+bias2 <- (1/sqrt(1000))/mean(se_est_thou)
+
+bias2
+
+```
+
